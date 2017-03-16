@@ -55,6 +55,13 @@ class MainHandler(webapp2.RequestHandler):
     logging.debug(task.inputs)
     logging.debug(task.results)
 
+  @ndb.transactional(retries=10)
+  def update_parent_task_finished(self, parent_task_key, val):
+    parent_task = parent_task_key.get()
+    parent_task.num_finished += val
+    parent_task.put()
+    return True
+
   def handle_fermat_worker_callback(self):
     task_id = self.request.get('task_id', '').strip()
     task_key = ndb.Key(urlsafe=task_id)
@@ -65,23 +72,22 @@ class MainHandler(webapp2.RequestHandler):
     logging.debug(task.results)
     # check if all other workers are done too.
     parent_task = task.parent_task.get()
-    unfinished_tasks_count = FermatPrimalityTestWorkerTask.query(
-        FermatPrimalityTestWorkerTask.parent_task==task.parent_task,
-        FermatPrimalityTestWorkerTask.results==None).count()
-    if unfinished_tasks_count == 0:
-      # all done
+    if parent_task is None:
+      self.abort(404, 'The parent task does not exist.')
+
+    # If we are lucky enough, the checking can be run in multiple times in
+    # parallel. Perhaps it is important to know it. In this case, we don't
+    # have any problem running this multiple times. just silly.
+    self.update_parent_task_finished(task.parent_task, 1)
+
+    parent_task = task.parent_task.get()
+
+    if parent_task.num_finished == parent_task.num_subtasks:
       is_prime = True
-      tasks, cursor, more = FermatPrimalityTestWorkerTask.query(
-          FermatPrimalityTestWorkerTask.parent_task==task.parent_task
-      ).fetch_page(1000)
-      for task in tasks:
-        if task.results['is_prime'] == False:
+      for task in parent_task.subtasks:
+        if task.results['is_prime'] is False:
           is_prime = False
           break
-      if is_prime and more:
-        # TODO: fetch more!
-        pass
-
       parent_task.results = {'is_prime': is_prime}
       parent_task.put()
       parent_task.callback()

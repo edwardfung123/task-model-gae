@@ -1,0 +1,23 @@
+service: test-taskqueue
+runtime: python27
+api_version: 1
+threadsafe: true
+
+skip_files:
+    - ^(.*/)?#.*#$
+    - ^(.*/)?.*~$
+    - ^(.*/)?.*\.py[co]$
+    - ^(.*/)?.*/RCS/.*$
+    - ^(.*/)?\..*$
+    - ^tmp/.*$
+
+builtins:
+    - deferred: on
+
+handlers:
+- url: /_ah/queue/deferred
+  script: google.appengine.ext.deferred.deferred.application
+  login: admin
+
+- url: /.*
+  script: main.app

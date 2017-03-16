@@ -54,6 +54,32 @@ class FermatPrimalityTestTask(Task):
           how many test cases we have to do.
   '''
   rate = 0.6
+  num_subtasks = ndb.IntegerProperty(default=0)
+  num_finished = ndb.IntegerProperty(default=0)
+
+  def prepare_subtasks(self, tests, prime):
+    from webapp2 import get_request
+    req = get_request()
+    callback_url = 'http://{host}/handle_fermat_worker'.format(host=req.host)
+    child_task_key_format = str(self.key.id()) + '-{}'
+    tasks = [FermatPrimalityTestWorkerTask(
+      id=child_task_key_format.format(i),
+      inputs={'prime': prime, 'base': base},
+      parent_task=self.key,
+      callback_url=callback_url) for i, base in enumerate(tests)]
+    return tasks
+
+  @property
+  def subtasks(self):
+    child_task_key_format = str(self.key.id()) + '-{}'
+    child_task_keys = [ndb.Key(FermatPrimalityTestWorkerTask, child_task_key_format.format(i))
+        for i in xrange(0, self.num_subtasks)]
+    worker_tasks = ndb.get_multi(child_task_keys)
+    for task in worker_tasks:
+      if task is None:
+        raise StopIteration()
+      else:
+        yield task
 
   def run(self):
     '''Create a bunch of subtasks to test the prime... It is all maths! For
@@ -71,18 +97,36 @@ class FermatPrimalityTestTask(Task):
     tests = random.sample(tests, sample_size)
     logging.debug(tests)
 
-    from webapp2 import get_request
-    req = get_request()
-    callback_url = 'http://{host}/handle_fermat_worker'.format(host=req.host)
-
     # create the tasks.
-    tasks = [FermatPrimalityTestWorkerTask(
-      inputs={'prime': prime, 'base': base},
-      parent_task=self.key,
-      callback_url=callback_url) for base in tests]
+    tasks = self.prepare_subtasks(tests, prime)
     ndb.put_multi(tasks)
+    self.num_subtasks = len(tasks)
+    self.put()
 
     # put into task queue to run the tests.
     from google.appengine.ext import deferred
     for task in tasks:
       deferred.defer(run_test, task_id=task.key.urlsafe())
+
+  def is_all_subtasks_done(self, func=None, memo=None):
+    child_task_key_format = str(self.key.id()) + '-{}'
+    reached_the_end = False
+    read_base = 0
+    index = 0
+    while not reached_the_end:
+      child_task_keys = [ndb.Key(FermatPrimalityTestWorkerTask, child_task_key_format.format(i))
+          for i in xrange(read_base, read_base+1000)]
+      worker_tasks = ndb.get_multi(child_task_keys)
+      for task in worker_tasks:
+        if task is None:
+          reached_the_end = True
+          break
+        else:
+          if task.results is None:
+            return False, index, None
+          else:
+            if func and hasattr(func, '__call__'):
+              memo = func(memo=memo, task=task, index=index)
+          index += 1
+      read_base += 1000
+    return True, index, memo
