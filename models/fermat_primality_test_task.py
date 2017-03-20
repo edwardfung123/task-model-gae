@@ -53,7 +53,8 @@ def update_parent_task_finished(parent_task_key, val):
   return True
 
 def worker_callback(task_id):
-  logging.debug(task_id)
+  logging.debug('In worker_callback')
+  logging.debug('task_id = ' + task_id)
   task_key = ndb.Key(urlsafe=task_id)
   task = task_key.get()
   if task is None:
@@ -73,9 +74,12 @@ def worker_callback(task_id):
   parent_task = task.parent_task.get()
 
   if parent_task.num_finished == parent_task.num_subtasks:
+    logging.debug('All the subtasks have finished.')
     is_prime = True
+    # Try to loop through the sub-tasks.
     for task in parent_task.subtasks:
       if task.results['is_prime'] is False:
+        logging.debug('Find a subtask that said the number is not a prime.')
         is_prime = False
         break
     parent_task.results = {'is_prime': is_prime}
