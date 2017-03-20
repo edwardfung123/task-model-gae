@@ -30,6 +30,7 @@ class Task(BaseModel):
   parent_task = ndb.KeyProperty(default=None, indexed=True)
   results = ndb.JsonProperty(default=None, indexed=True)
   callback_url = ndb.StringProperty(required=True)
+  callback_fn = ndb.BlobProperty(default=None)
 
   def run(self):
     '''Do what the task supposed to do here. This should be overridden by the
@@ -50,7 +51,11 @@ class Task(BaseModel):
     To customize the data sent to the callback, override the method
     get_callback_data().
     '''
-    if self.callback_url:
+    if self.callback_fn is not None:
+      # deserialize it and run the callback
+      func, args, kwds = self.callback_function
+      return func(**self.get_callback_data())
+    elif self.callback_url:
       from google.appengine.api import urlfetch
       import urllib
       url = self.callback_url
@@ -72,6 +77,22 @@ class Task(BaseModel):
     return {
       'task_id': self.key.urlsafe(),
     }
+
+  @property
+  def callback_function(self):
+    import pickle
+    try:
+      func, args, kwds = pickle.loads(self.callback_fn)
+    except Exception, e:
+      raise PermanentTaskFailure(e)
+    else:
+      return func, args, kwds
+
+  @callback_function.setter
+  def callback_function(self, func, *args, **kwds):
+    from google.appengine.ext.deferred import serialize
+    self.callback_fn = serialize(func, *args, **kwds)
+    return self.callback_fn
 
 
 
