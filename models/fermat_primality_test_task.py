@@ -45,6 +45,45 @@ class FermatPrimalityTestWorkerTask(Task):
     self.callback()
 
 
+@ndb.transactional(retries=10)
+def update_parent_task_finished(parent_task_key, val):
+  parent_task = parent_task_key.get()
+  parent_task.num_finished += val
+  parent_task.put()
+  return True
+
+def worker_callback(task_id):
+  logging.debug(task_id)
+  task_key = ndb.Key(urlsafe=task_id)
+  task = task_key.get()
+  if task is None:
+    raise ValueError('The task does not exist. really?')
+  logging.debug(task.inputs)
+  logging.debug(task.results)
+  # check if all other workers are done too.
+  parent_task = task.parent_task.get()
+  if parent_task is None:
+    raise ValueError('The parent task does not exist.')
+
+  # If we are lucky enough, the checking can be run in multiple times in
+  # parallel. Perhaps it is important to know it. In this case, we don't
+  # have any problem running this multiple times. just silly.
+  update_parent_task_finished(task.parent_task, 1)
+
+  parent_task = task.parent_task.get()
+
+  if parent_task.num_finished == parent_task.num_subtasks:
+    is_prime = True
+    for task in parent_task.subtasks:
+      if task.results['is_prime'] is False:
+        is_prime = False
+        break
+    parent_task.results = {'is_prime': is_prime}
+    parent_task.put()
+    parent_task.callback()
+  else:
+    # fine then. we wait for another callback.
+    pass
 
 class FermatPrimalityTestTask(Task):
   '''Run Fermat Primality Test for a given number.
@@ -60,13 +99,18 @@ class FermatPrimalityTestTask(Task):
   def prepare_subtasks(self, tests, prime):
     from webapp2 import get_request
     req = get_request()
-    callback_url = 'http://{host}/handle_fermat_worker'.format(host=req.host)
+    #callback_url = 'http://{host}/handle_fermat_worker'.format(host=req.host)
+    callback_url = ''
     child_task_key_format = str(self.key.id()) + '-{}'
-    tasks = [FermatPrimalityTestWorkerTask(
-      id=child_task_key_format.format(i),
-      inputs={'prime': prime, 'base': base},
-      parent_task=self.key,
-      callback_url=callback_url) for i, base in enumerate(tests)]
+    def create_task(i):
+      task = FermatPrimalityTestWorkerTask(
+        id=child_task_key_format.format(i),
+        inputs={'prime': prime, 'base': base},
+        parent_task=self.key,
+        callback_url='')
+      task.callback_function = worker_callback
+      return task
+    tasks = [create_task(i) for i, base in enumerate(tests)]
     return tasks
 
   @property

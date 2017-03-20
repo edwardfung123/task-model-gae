@@ -62,38 +62,38 @@ class MainHandler(webapp2.RequestHandler):
     parent_task.put()
     return True
 
-  def handle_fermat_worker_callback(self):
-    task_id = self.request.get('task_id', '').strip()
-    task_key = ndb.Key(urlsafe=task_id)
-    task = task_key.get()
-    if task is None:
-      self.abort(404, 'The task does not exist. really?')
-    logging.debug(task.inputs)
-    logging.debug(task.results)
-    # check if all other workers are done too.
-    parent_task = task.parent_task.get()
-    if parent_task is None:
-      self.abort(404, 'The parent task does not exist.')
+  #def handle_fermat_worker_callback(self):
+  #  task_id = self.request.get('task_id', '').strip()
+  #  task_key = ndb.Key(urlsafe=task_id)
+  #  task = task_key.get()
+  #  if task is None:
+  #    self.abort(404, 'The task does not exist. really?')
+  #  logging.debug(task.inputs)
+  #  logging.debug(task.results)
+  #  # check if all other workers are done too.
+  #  parent_task = task.parent_task.get()
+  #  if parent_task is None:
+  #    self.abort(404, 'The parent task does not exist.')
 
-    # If we are lucky enough, the checking can be run in multiple times in
-    # parallel. Perhaps it is important to know it. In this case, we don't
-    # have any problem running this multiple times. just silly.
-    self.update_parent_task_finished(task.parent_task, 1)
+  #  # If we are lucky enough, the checking can be run in multiple times in
+  #  # parallel. Perhaps it is important to know it. In this case, we don't
+  #  # have any problem running this multiple times. just silly.
+  #  self.update_parent_task_finished(task.parent_task, 1)
 
-    parent_task = task.parent_task.get()
+  #  parent_task = task.parent_task.get()
 
-    if parent_task.num_finished == parent_task.num_subtasks:
-      is_prime = True
-      for task in parent_task.subtasks:
-        if task.results['is_prime'] is False:
-          is_prime = False
-          break
-      parent_task.results = {'is_prime': is_prime}
-      parent_task.put()
-      parent_task.callback()
-    else:
-      # fine then. we wait for another callback.
-      pass
+  #  if parent_task.num_finished == parent_task.num_subtasks:
+  #    is_prime = True
+  #    for task in parent_task.subtasks:
+  #      if task.results['is_prime'] is False:
+  #        is_prime = False
+  #        break
+  #    parent_task.results = {'is_prime': is_prime}
+  #    parent_task.put()
+  #    parent_task.callback()
+  #  else:
+  #    # fine then. we wait for another callback.
+  #    pass
     
   def show_task(self):
     task_id = self.request.get('task_id', '').strip()
