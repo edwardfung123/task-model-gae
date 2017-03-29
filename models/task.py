@@ -63,7 +63,14 @@ class Task(BaseModel):
     if self.callback_fn is not None:
       # deserialize it and run the callback
       func, args, kwds = self.callback_function
-      return func(**self.get_callback_data())
+      if kwds is None:
+        kwds = {}
+      kwds.update(self.get_callback_data())
+      logging.debug('args')
+      logging.debug(args)
+      logging.debug('kwds')
+      logging.debug(kwds)
+      return func(*args, **kwds)
     elif self.callback_url:
       from google.appengine.api import urlfetch
       import urllib
