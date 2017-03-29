@@ -130,3 +130,30 @@ class DummyTask(Task):
 
 
 
+def runner(fn):
+  '''A generic task runner. To workaround the import issue in GAE tasklet.
+  You have to create a dummy function and decorate it with this runner
+  function.
+
+  Example:
+
+  ```
+  @runner
+  def run_task():
+    pass
+  ```
+  '''
+  from functools import wraps
+  @wraps(fn)
+  def wrapper(*args, **kwargs):
+    logging.debug(args)
+    logging.debug(kwargs)
+    task_id = kwargs.pop('task_id', None) or args[0]
+    task_key = ndb.Key(urlsafe=task_id)
+    task = task_key.get()
+    if task:
+      task.run()
+    else:
+      logging.error('Failed to get task')
+      raise ValueError('No task is mapped to this key')
+  return wrapper
