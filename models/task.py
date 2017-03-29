@@ -24,6 +24,15 @@ class Task(BaseModel):
           trigger any follow-up actions. Usually, the handler will get the
           parent task and check if all subtasks are done. See also `callback()`
           for more detail about the callback handler.
+      callback_fn (ndb.BlobProperty): a serialize callback function and its
+          arguments by using the serialize method in Google's deferred library.
+          It is used internally. To get/set the function and the arguments, use 
+          the property callback_function instead. There are limitions on the
+          function to be serialized, please check the source code of the
+          deferred library. See
+          https://cloud.google.com/appengine/docs/standard/python/refdocs/google.appengine.ext.deferred.deferred . When the callback() is called and callback_fn is set, it 
+          will be deserialized and called. Any callback_url will be ignored in
+          this case. 
   '''
 
   inputs = ndb.JsonProperty(default={})
